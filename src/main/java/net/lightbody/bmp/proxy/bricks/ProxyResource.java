@@ -68,8 +68,12 @@ public class ProxyResource {
 
     @Get
     @At("/:port/har")
-    public Reply<Har> getHar(@Named("port") int port) {
+    public Reply<?> getHar(@Named("port") int port) {
         ProxyServer proxy = proxyManager.get(port);
+        if (proxy == null) {
+            return Reply.saying().notFound();
+        }
+
         Har har = proxy.getHar();
 
         return Reply.with(har).as(Json.class);
@@ -78,8 +82,12 @@ public class ProxyResource {
     @Put
     @At("/:port/har")
     public Reply<?> newHar(@Named("port") int port, Request request) {
-        String initialPageRef = request.param("initialPageRef");
         ProxyServer proxy = proxyManager.get(port);
+        if (proxy == null) {
+            return Reply.saying().notFound();
+        }
+
+        String initialPageRef = request.param("initialPageRef");
         Har oldHar = proxy.newHar(initialPageRef);
 
         String captureHeaders = request.param("captureHeaders");
@@ -99,8 +107,12 @@ public class ProxyResource {
     @Put
     @At("/:port/har/pageRef")
     public Reply<?> setPage(@Named("port") int port, Request request) {
-        String pageRef = request.param("pageRef");
         ProxyServer proxy = proxyManager.get(port);
+        if (proxy == null) {
+            return Reply.saying().notFound();
+        }
+
+        String pageRef = request.param("pageRef");
         proxy.newPage(pageRef);
 
         return Reply.saying().ok();
@@ -109,30 +121,66 @@ public class ProxyResource {
     @Put
     @At("/:port/blacklist")
     public Reply<?> blacklist(@Named("port") int port, Request request) {
+        ProxyServer proxy = proxyManager.get(port);
+        if (proxy == null) {
+            return Reply.saying().notFound();
+        }
+
         String blacklist = request.param("regex");
         int responseCode = parseResponseCode(request.param("status"));
-        ProxyServer proxy = proxyManager.get(port);
         proxy.blacklistRequests(blacklist, responseCode);
 
         return Reply.saying().ok();
+    }
+    
+    @Delete
+    @At("/:port/blacklist")
+    public Reply<?> clearBlacklist(@Named("port") int port, Request request) {
+        ProxyServer proxy = proxyManager.get(port);
+        if (proxy == null) {
+            return Reply.saying().notFound();
+        }
+
+    	proxy.clearBlacklist();
+    	return Reply.saying().ok();
     }
 
     @Put
     @At("/:port/whitelist")
     public Reply<?> whitelist(@Named("port") int port, Request request) {
+        ProxyServer proxy = proxyManager.get(port);
+        if (proxy == null) {
+            return Reply.saying().notFound();
+        }
+
         String regex = request.param("regex");
         int responseCode = parseResponseCode(request.param("status"));
-        ProxyServer proxy = proxyManager.get(port);
         proxy.whitelistRequests(regex.split(","), responseCode);
 
         return Reply.saying().ok();
+    }
+    
+    @Delete
+    @At("/:port/whitelist")
+    public Reply<?> clearWhitelist(@Named("port") int port, Request request) {
+    	ProxyServer proxy = proxyManager.get(port);
+        if (proxy == null) {
+            return Reply.saying().notFound();
+        }
+
+    	proxy.clearWhitelist();
+    	return Reply.saying().ok();
     }
 
     @Post
     @At("/:port/auth/basic/:domain")
     public Reply<?> autoBasicAuth(@Named("port") int port, @Named("domain") String domain, Request request) {
-        Map<String, String> credentials = request.read(HashMap.class).as(Json.class);
         ProxyServer proxy = proxyManager.get(port);
+        if (proxy == null) {
+            return Reply.saying().notFound();
+        }
+
+        Map<String, String> credentials = request.read(HashMap.class).as(Json.class);
         proxy.autoBasicAuthorization(domain, credentials.get("username"), credentials.get("password"));
 
         return Reply.saying().ok();
@@ -142,6 +190,10 @@ public class ProxyResource {
     @At("/:port/headers")
     public Reply<?> updateHeaders(@Named("port") int port, Request request) {
         ProxyServer proxy = proxyManager.get(port);
+        if (proxy == null) {
+            return Reply.saying().notFound();
+        }
+
         Map<String, String> headers = request.read(Map.class).as(Json.class);
         for (Map.Entry<String, String> entry : headers.entrySet()) {
             String key = entry.getKey();
@@ -155,6 +207,9 @@ public class ProxyResource {
     @At("/:port/interceptor/response")
     public Reply<?> addResponseInterceptor(@Named("port") int port, Request request) throws IOException, ScriptException {
         ProxyServer proxy = proxyManager.get(port);
+        if (proxy == null) {
+            return Reply.saying().notFound();
+        }
 
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         request.readTo(baos);
@@ -217,6 +272,10 @@ public class ProxyResource {
     @At("/:port/limit")
     public Reply<?> limit(@Named("port") int port, Request request) {
         ProxyServer proxy = proxyManager.get(port);
+        if (proxy == null) {
+            return Reply.saying().notFound();
+        }
+
         StreamManager streamManager = proxy.getStreamManager();
         String upstreamKbps = request.param("upstreamKbps");
         if (upstreamKbps != null) {
@@ -266,6 +325,10 @@ public class ProxyResource {
     @At("/:port/timeout")
     public Reply<?> timeout(@Named("port") int port, Request request) {
         ProxyServer proxy = proxyManager.get(port);
+        if (proxy == null) {
+            return Reply.saying().notFound();
+        }
+
         String requestTimeout = request.param("requestTimeout");
         if (requestTimeout != null) {
             try {
@@ -296,6 +359,11 @@ public class ProxyResource {
     @Delete
     @At("/:port")
     public Reply<?> delete(@Named("port") int port) throws Exception {
+        ProxyServer proxy = proxyManager.get(port);
+        if (proxy == null) {
+            return Reply.saying().notFound();
+        }
+
         proxyManager.delete(port);
         return Reply.saying().ok();
     }
@@ -304,6 +372,10 @@ public class ProxyResource {
     @At("/:port/hosts")
     public Reply<?> remapHosts(@Named("port") int port, Request request) {
         ProxyServer proxy = proxyManager.get(port);
+        if (proxy == null) {
+            return Reply.saying().notFound();
+        }
+
         @SuppressWarnings("unchecked") Map<String, String> headers = request.read(Map.class).as(Json.class);
 
         for (Map.Entry<String, String> entry : headers.entrySet()) {
@@ -321,9 +393,13 @@ public class ProxyResource {
     @Put
     @At("/:port/wait")
     public Reply<?> wait(@Named("port") int port, Request request) {
+        ProxyServer proxy = proxyManager.get(port);
+        if (proxy == null) {
+            return Reply.saying().notFound();
+        }
+
         String quietPeriodInMs = request.param("quietPeriodInMs");
         String timeoutInMs = request.param("timeoutInMs");
-        ProxyServer proxy = proxyManager.get(port);
         proxy.waitForNetworkTrafficToStop(Integer.parseInt(quietPeriodInMs), Integer.parseInt(timeoutInMs));
         return Reply.saying().ok();
     }
@@ -331,7 +407,11 @@ public class ProxyResource {
     @Delete
     @At("/:port/dns/cache")
     public Reply<?> clearDnsCache(@Named("port") int port) throws Exception {
-    	ProxyServer proxy = proxyManager.get(port);
+        ProxyServer proxy = proxyManager.get(port);
+        if (proxy == null) {
+            return Reply.saying().notFound();
+        }
+
     	proxy.clearDNSCache();
         return Reply.saying().ok();
     }
@@ -339,24 +419,43 @@ public class ProxyResource {
     @Put
     @At("/:port/rewrite")
     public Reply<?> rewriteUrl(@Named("port") int port, Request request) {
+        ProxyServer proxy = proxyManager.get(port);
+        if (proxy == null) {
+            return Reply.saying().notFound();
+        }
+
         String match = request.param("matchRegex");
         String replace = request.param("replace");
-        ProxyServer proxy = proxyManager.get(port);
         proxy.rewriteUrl(match, replace);
         return Reply.saying().ok();
     } 
     
+    @Delete
+    @At("/:port/rewrite")
+    public Reply<?> clearRewriteRules(@Named("port") int port, Request request) {
+        ProxyServer proxy = proxyManager.get(port);
+        if (proxy == null) {
+            return Reply.saying().notFound();
+        }
+
+    	proxy.clearRewriteRules();
+    	return Reply.saying().ok();
+    }
+    
     @Put
     @At("/:port/retry")
     public Reply<?> retryCount(@Named("port") int port, Request request) {
-        String count = request.param("retrycount");
         ProxyServer proxy = proxyManager.get(port);
+        if (proxy == null) {
+            return Reply.saying().notFound();
+        }
+
+        String count = request.param("retrycount");
         proxy.setRetryCount(Integer.parseInt(count));
         return Reply.saying().ok();
     } 
     
-    private int parseResponseCode(String response)
-    {
+    private int parseResponseCode(String response) {
         int responseCode = 200;
         if (response != null) {
             try {

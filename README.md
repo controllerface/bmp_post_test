@@ -50,9 +50,11 @@ Once that is done, a new proxy will be available on the port returned. All you h
  - PUT /proxy/[port]/whitelist - Sets a list of URL patterns to whitelist. Takes the following parameters:
   - regex - a comma separated list of regular expressions
   - status - the HTTP status code to return for URLs that do not match the whitelist
+ - DELETE /proxy/[port]/whitelist - Clears all URL patterns from the whitelist 
  - PUT /proxy/[port]/blacklist - Set a URL to blacklist. Takes the following parameters:
   - regex - the blacklist regular expression
   - status - the HTTP status code to return for URLs that are blacklisted
+ - DELETE /proxy/[port]/blacklist - Clears all URL patterns from the blacklist
  - PUT /proxy/[port]/limit - Limit the bandwidth through the proxy. Takes the following parameters:
   - downstreamKbps - Sets the downstream kbps
   - upstreamKbps - Sets the upstream kbps
@@ -70,13 +72,14 @@ Once that is done, a new proxy will be available on the port returned. All you h
   - quietPeriodInMs - Sets quiet period in milliseconds
   - timeoutInMs - Sets timeout in milliseconds 
  - PUT /proxy/[port]/timeout - Handles different proxy timeouts. Takes the following parameters:
-  - requestTimeout - request timeout in milliseconds
-  - readTimeout - read timeout in milliseconds. Which is the timeout for waiting for data or, put differently, a maximum period inactivity between two consecutive data packets). A timeout value of zero is interpreted as an infinite timeout.
-  - connectionTimeout - Determines the timeout in milliseconds until a connection is established. A timeout value of zero is interpreted as an infinite timeout. 
-  - dnsCacheTimeout - Sets the maximum length of time that records will be stored in this Cache. A negative value disables this feature (that is, sets no limit).
+  - requestTimeout - request timeout in milliseconds. A timeout value of -1 is interpreted as infinite timeout. It equals -1 by default.
+  - readTimeout - read timeout in milliseconds. Which is the timeout for waiting for data or, put differently, a maximum period inactivity between two consecutive data packets). A timeout value of zero is interpreted as an infinite timeout. It equals 60000 by default
+  - connectionTimeout - Determines the timeout in milliseconds until a connection is established. A timeout value of zero is interpreted as an infinite timeout. It eqauls 60000 by default
+  - dnsCacheTimeout - Sets the maximum length of time that records will be stored in this Cache. A nonpositive value disables this feature (that is, sets no limit). It equals 0 y default
  - PUT /proxy/[port]/rewrite - Redirecting URL's
   - matchRegex - a matching URL regular expression
   - replace - replacement URL
+ - DELETE /proxy/[port]/rewrite - Removes all URL redirection rules currently in effect
  - PUT /proxy/[port]/retry - Setting the retry count
   - retrycount - the number of times a method will be retried
  - DELETE /proxy/[port]/dns/cache - Empties the Cache.
