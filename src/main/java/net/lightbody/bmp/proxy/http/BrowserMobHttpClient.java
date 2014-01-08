@@ -22,6 +22,7 @@ import org.apache.http.conn.scheme.Scheme;
 import org.apache.http.conn.scheme.SchemeRegistry;
 import org.apache.http.cookie.*;
 import org.apache.http.cookie.params.CookieSpecPNames;
+import org.apache.http.entity.ContentType;
 import org.apache.http.impl.auth.BasicScheme;
 import org.apache.http.impl.client.DefaultHttpClient;
 import org.apache.http.impl.client.DefaultHttpRequestRetryHandler;
@@ -44,6 +45,7 @@ import org.xbill.DNS.DClass;
 import java.io.*;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.charset.Charset;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
@@ -395,12 +397,12 @@ public class BrowserMobHttpClient {
             requestCounter.incrementAndGet();
 
             for (RequestInterceptor interceptor : requestInterceptors) {
-                interceptor.process(req);
+                interceptor.process(req, har);
             }
 
             BrowserMobHttpResponse response = execute(req, 1);
             for (ResponseInterceptor interceptor : responseInterceptors) {
-                interceptor.process(response);
+                interceptor.process(response, har);
             }
 
             return response;
@@ -420,7 +422,6 @@ public class BrowserMobHttpClient {
         RequestCallback callback = req.getRequestCallback();
 
         HttpRequestBase method = req.getMethod();
-        String verificationText = req.getVerificationText();
         String url = method.getURI().toString();
 
         // save the browser and version if it's not yet been set
@@ -498,19 +499,13 @@ public class BrowserMobHttpClient {
 
 
         String charSet = "UTF-8";
-        String responseBody = null;
-
         InputStream is = null;
         int statusCode = -998;
         long bytes = 0;
         boolean gzipping = false;
-        boolean contentMatched = true;
         OutputStream os = req.getOutputStream();
         if (os == null) {
             os = new CappedByteArrayOutputStream(1024 * 1024); // MOB-216 don't buffer more than 1 MB
-        }
-        if (verificationText != null) {
-            contentMatched = false;
         }
         Date start = new Date();
 
@@ -744,55 +739,38 @@ public class BrowserMobHttpClient {
         String contentType = null;
 
         if (response != null) {
-            try {
-                Header contentTypeHdr = response.getFirstHeader("Content-Type");
-                if (contentTypeHdr != null) {
-                    contentType = contentTypeHdr.getValue();
-                    entry.getResponse().getContent().setMimeType(contentType);
+            Header contentTypeHdr = response.getFirstHeader("Content-Type");
+            if (contentTypeHdr != null) {
+                contentType = contentTypeHdr.getValue();
+                entry.getResponse().getContent().setMimeType(contentType);
 
-                    if (captureContent && os != null && os instanceof ClonedOutputStream) {
-                        ByteArrayOutputStream copy = ((ClonedOutputStream) os).getOutput();
+                if (captureContent && os != null && os instanceof ClonedOutputStream) {
+                    ByteArrayOutputStream copy = ((ClonedOutputStream) os).getOutput();
 
-                        if (gzipping) {
-                            // ok, we need to decompress it before we can put it in the har file
-                            try {
-                                InputStream temp = new GZIPInputStream(new ByteArrayInputStream(copy.toByteArray()));
-                                copy = new ByteArrayOutputStream();
-                                IOUtils.copy(temp, copy);
-                            } catch (IOException e) {
-                                throw new RuntimeException(e);
-                            }
-                        }
-
-                        if (contentType != null && (contentType.startsWith("text/")  ||
-                        		contentType.startsWith("application/x-javascript")) ||
-                        		contentType.startsWith("application/javascript")  ||
-                        		contentType.startsWith("application/json")  ||
-                        		contentType.startsWith("application/xml")  ||
-                        		contentType.startsWith("application/xhtml+xml")) {
-                            entry.getResponse().getContent().setText(new String(copy.toByteArray()));
-                        } else if(captureBinaryContent){
-                            entry.getResponse().getContent().setText(Base64.byteArrayToBase64(copy.toByteArray()));
+                    if (gzipping) {
+                        // ok, we need to decompress it before we can put it in the har file
+                        try {
+                            InputStream temp = new GZIPInputStream(new ByteArrayInputStream(copy.toByteArray()));
+                            copy = new ByteArrayOutputStream();
+                            IOUtils.copy(temp, copy);
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
                         }
                     }
 
-
-                    NameValuePair nvp = contentTypeHdr.getElements()[0].getParameterByName("charset");
-
-                    if (nvp != null) {
-                        charSet = nvp.getValue();
+                    if (hasTextualContent(contentType)) {
+                        setTextOfEntry(entry, copy, contentType);
+                    } else if(captureBinaryContent){
+                        setBinaryContentOfEntry(entry, copy);
                     }
                 }
 
-                if (os instanceof ByteArrayOutputStream) {
-                    responseBody = ((ByteArrayOutputStream) os).toString(charSet);
 
-                    if (verificationText != null) {
-                        contentMatched = responseBody.contains(verificationText);
-                    }
+                NameValuePair nvp = contentTypeHdr.getElements()[0].getParameterByName("charset");
+
+                if (nvp != null) {
+                    charSet = nvp.getValue();
                 }
-            } catch (UnsupportedEncodingException e) {
-                throw new RuntimeException(e);
             }
         }
 
@@ -865,9 +843,33 @@ public class BrowserMobHttpClient {
         }
 
 
-        return new BrowserMobHttpResponse(entry, method, response, contentMatched, verificationText, errorMessage, responseBody, contentType, charSet);
+        return new BrowserMobHttpResponse(entry, method, response, errorMessage, contentType, charSet);
     }
 
+	private boolean hasTextualContent(String contentType) {
+		return contentType != null && contentType.startsWith("text/") ||
+				contentType.startsWith("application/x-javascript") ||
+				contentType.startsWith("application/javascript")  ||
+				contentType.startsWith("application/json")  ||
+				contentType.startsWith("application/xml")  ||
+				contentType.startsWith("application/xhtml+xml");
+	}
+
+	private void setBinaryContentOfEntry(HarEntry entry, ByteArrayOutputStream copy) {
+		entry.getResponse().getContent().setText(Base64.byteArrayToBase64(copy.toByteArray()));
+	}
+
+	private void setTextOfEntry(HarEntry entry, ByteArrayOutputStream copy, String contentType) {
+		ContentType contentTypeCharset = ContentType.parse(contentType);
+		Charset charset = contentTypeCharset.getCharset();
+		if (charset != null) {
+			entry.getResponse().getContent().setText(new String(copy.toByteArray(), charset));
+		} else {
+			entry.getResponse().getContent().setText(new String(copy.toByteArray()));
+		}
+	}
+
+    
     public void shutdown() {
         shutdown = true;
         abortActiveRequests();
